@@ -1,4 +1,4 @@
-name: CI
+﻿name: CI
 
 on:
   push:
@@ -21,7 +21,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt send2trash markdown winrt-runtime winrt-Windows.Media.Ocr winrt-Windows.Graphics.Imaging winrt-Windows.Storage.Streams winrt-Windows.Globalization winrt-Windows.Foundation winrt-Windows.Foundation.Collections winrt-Windows.Storage
+          pip install -r requirements.txt
       - name: Backend tests
         run: python tests/test_backend.py
       - name: UI smoke test
@@ -42,7 +42,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt pyinstaller send2trash markdown winrt-runtime winrt-Windows.Media.Ocr winrt-Windows.Graphics.Imaging winrt-Windows.Storage.Streams winrt-Windows.Globalization winrt-Windows.Foundation winrt-Windows.Foundation.Collections winrt-Windows.Storage
+          pip install -r requirements-build.txt
       - name: Build installer
         shell: pwsh
         run: powershell -ExecutionPolicy Bypass -File packaging/build.ps1
@@ -50,3 +50,4 @@ jobs:
         with:
           name: Tangerine-Setup
           path: dist/Tangerine-Setup.exe
+

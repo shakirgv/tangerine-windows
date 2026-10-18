@@ -67,7 +67,7 @@ python -m venv .venv
 powershell -ExecutionPolicy Bypass -File packaging\build.ps1
 ```
 
-This builds the app with PyInstaller, self-tests it, and produces `dist\Tangerine-Setup.exe`. Plan for about 1 GB of free disk space.
+This builds the app with PyInstaller, self-tests it, and produces `dist\Tangerine-Setup.exe`. Install `requirements-build.txt` first (it adds PyInstaller). Plan for about 1 GB of free disk space.
 
 ## Tests
 
@@ -95,4 +95,7 @@ packaging/              PyInstaller spec, installer, uninstaller, build script
 tests/
 ```
 
+## License
+
+MIT, see [LICENSE](LICENSE).
 
