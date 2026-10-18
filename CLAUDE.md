@@ -70,4 +70,6 @@ tangerine/
 
 ## Current status
 
-Nothing is built yet. Start from Step 1 and build the whole roadmap yourself, in order. Create the project structure above, set up a virtual environment, and make sure the app runs with `python main.py`.
+Roadmap steps 1-8 are built (video/audio via ffmpeg through imageio-ffmpeg, DOCX to TXT only). Run with `.venv\Scripts\python main.py`. Tests are in `tests/`.
+
+Not verified yet: a real Explorer drag onto the overlay (needs a human on a real screen). Not built: merge/trim, redact for PDF, DOCX to PDF.
