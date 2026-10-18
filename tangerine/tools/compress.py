@@ -6,13 +6,19 @@ from pathlib import Path
 
 from PIL import Image
 
+from .. import settings
 from ..converters.image import flatten, open_image
 from ..utils import output_path
 
 
-def compress(src: Path, quality: int = 70) -> list[Path]:
+def compress(src: Path, quality: int | None = None) -> list[Path]:
     """Save a smaller copy as '<name>_compressed.<ext>' next to the original."""
     ext = src.suffix.lower()
+    if ext == ".gif":
+        from ..converters.media import gif_optimize
+
+        return gif_optimize(src)
+    quality = int(settings.get("compress_quality")) if quality is None else quality
     img = open_image(src)
 
     if ext in (".jpg", ".jpeg"):

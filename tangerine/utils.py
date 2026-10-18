@@ -1,7 +1,8 @@
-"""Small shared helpers for output paths and file sizes."""
+"""Small shared helpers: output paths, file sizes and cooperative cancellation."""
 
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 
 from . import settings
@@ -38,3 +39,20 @@ def human_size(num: float) -> str:
             return f"{num:.0f} {unit}" if unit == "B" else f"{num:.1f} {unit}"
         num /= 1024
     return f"{num:.1f} GB"
+
+
+# Cancellation: the worker thread of a job registers an Event; long operations poll cancelled().
+_local = threading.local()
+
+
+class Cancelled(Exception):
+    """Raised inside a job when the user pressed Cancel."""
+
+
+def set_cancel_event(event: threading.Event | None) -> None:
+    _local.event = event
+
+
+def cancelled() -> bool:
+    event = getattr(_local, "event", None)
+    return bool(event and event.is_set())

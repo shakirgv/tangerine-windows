@@ -5,18 +5,19 @@ from __future__ import annotations
 from pathlib import Path
 
 from PIL import Image
-from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QButtonGroup,
+    QCheckBox,
     QComboBox,
     QGridLayout,
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QLineEdit,
     QMessageBox,
     QPushButton,
-    QSlider,
     QSpinBox,
     QTableWidget,
     QTableWidgetItem,
@@ -30,63 +31,12 @@ from ..tools.add_bg import PRESETS, RATIOS, add_background
 from ..tools.crop import ASPECTS, crop_image
 from ..tools.edit import adjust
 from ..tools.redact import STYLES, redact
+from ..tools.resize import fit_long_side, resize_image
+from ..tools.watermark import COLORS, POSITIONS, add_watermark
 from ..utils import output_path
 from .image_canvas import ImageCanvas
-from .theme import ORANGE, STYLE, pil_to_pixmap
-
-PANEL_WIDTH = 240
-
-
-class ToolWindow(QWidget):
-    """Base class: loads the image, applies the theme and reports saved files."""
-
-    saved = Signal(object)  # Path of the file that was written
-    TITLE = ""
-
-    def __init__(self, path: Path) -> None:
-        super().__init__()
-        self.path = Path(path)
-        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
-        self.setStyleSheet(STYLE)
-        self.setWindowTitle(f"{self.TITLE} - {self.path.name}")
-        self.image = open_image(self.path)
-        self.status = QLabel("")
-        self.status.setObjectName("muted")
-        self.status.setWordWrap(True)
-
-    def side_panel(self) -> tuple[QWidget, QVBoxLayout]:
-        panel = QWidget()
-        panel.setFixedWidth(PANEL_WIDTH)
-        layout = QVBoxLayout(panel)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(8)
-        return panel, layout
-
-    def report(self, out: Path) -> None:
-        self.status.setText(f"Saved: {out.name}")
-        self.saved.emit(out)
-
-    def fail(self, exc: Exception) -> None:
-        QMessageBox.warning(self, "Tangerine", f"{type(exc).__name__}: {exc}")
-
-    def show_front(self) -> None:
-        self.show()
-        self.raise_()
-        self.activateWindow()
-
-
-def _caption(text: str) -> QLabel:
-    label = QLabel(text)
-    label.setObjectName("muted")
-    return label
-
-
-def _slider(lo: int, hi: int, value: int) -> QSlider:
-    slider = QSlider(Qt.Orientation.Horizontal)
-    slider.setRange(lo, hi)
-    slider.setValue(value)
-    return slider
-
+from .theme import ORANGE, pil_to_pixmap
+from .tool_base import ToolWindow, caption, make_slider
 
 # ---------------------------------------------------------------------------------------------
 # Crop
@@ -115,9 +65,9 @@ class CropWindow(ToolWindow):
 
         panel, col = self.side_panel()
         col.addWidget(QLabel("Crop"))
-        col.addWidget(_caption("Aspect ratio"))
+        col.addWidget(caption("Aspect ratio"))
         col.addWidget(self.aspect)
-        col.addWidget(_caption("Size"))
+        col.addWidget(caption("Size"))
         row = QHBoxLayout()
         row.addWidget(self.width_box)
         row.addWidget(QLabel("x"))
@@ -212,15 +162,15 @@ class AddBgWindow(ToolWindow):
         self.swatches.button(0).setChecked(True)
         col.addLayout(grid)
 
-        self.padding = _slider(0, 40, self.DEFAULTS["padding"])
-        self.corners = _slider(0, 25, self.DEFAULTS["corners"])
-        self.shadow = _slider(0, 100, self.DEFAULTS["shadow"])
+        self.padding = make_slider(0, 40, self.DEFAULTS["padding"])
+        self.corners = make_slider(0, 25, self.DEFAULTS["corners"])
+        self.shadow = make_slider(0, 100, self.DEFAULTS["shadow"])
         for name, slider in (("Padding", self.padding), ("Corners", self.corners), ("Shadow", self.shadow)):
-            col.addWidget(_caption(name))
+            col.addWidget(caption(name))
             col.addWidget(slider)
         self.ratio = QComboBox()
         self.ratio.addItems(list(RATIOS))
-        col.addWidget(_caption("Ratio"))
+        col.addWidget(caption("Ratio"))
         col.addWidget(self.ratio)
         col.addStretch(1)
         col.addWidget(self.status)
@@ -330,11 +280,11 @@ class EditWindow(ToolWindow):
 
         panel, col = self.side_panel()
         col.addWidget(QLabel("Adjust"))
-        self.sliders: dict[str, QSlider] = {}
+        self.sliders: dict = {}
         for name in ("Brightness", "Contrast", "Saturation", "Sharpness"):
-            slider = _slider(-100, 100, 0)
+            slider = make_slider(-100, 100, 0)
             self.sliders[name.lower()] = slider
-            col.addWidget(_caption(name))
+            col.addWidget(caption(name))
             col.addWidget(slider)
             slider.valueChanged.connect(self._render)
         row = QHBoxLayout()
@@ -424,10 +374,10 @@ class RedactWindow(ToolWindow):
 
         panel, col = self.side_panel()
         col.addWidget(QLabel("Redact"))
-        hint = _caption("Drag to draw boxes over what you want to hide. Right click removes a box.")
+        hint = caption("Drag to draw boxes over what you want to hide. Right click removes a box.")
         hint.setWordWrap(True)
         col.addWidget(hint)
-        col.addWidget(_caption("Style"))
+        col.addWidget(caption("Style"))
         col.addWidget(self.style_box)
         row = QHBoxLayout()
         row.addWidget(undo)
@@ -508,14 +458,198 @@ class MetadataWindow(ToolWindow):
         self.report(dest)
 
 
+# ---------------------------------------------------------------------------------------------
+# Resize
+# ---------------------------------------------------------------------------------------------
+
+
+class ResizeWindow(ToolWindow):
+    TITLE = "Resize"
+    PRESETS = ["Custom", "25%", "50%", "75%", "Long side 3840 px", "Long side 1920 px", "Long side 1280 px", "Long side 800 px"]
+
+    def __init__(self, path: Path) -> None:
+        super().__init__(path)
+        self.resize(420, 300)
+        iw, ih = self.image.size
+        self.ratio = iw / ih
+        self.preset = QComboBox()
+        self.preset.addItems(self.PRESETS)
+        self.width_box = QSpinBox()
+        self.height_box = QSpinBox()
+        for box in (self.width_box, self.height_box):
+            box.setRange(1, 30000)
+            box.setSuffix(" px")
+        self.width_box.setValue(iw)
+        self.height_box.setValue(ih)
+        self.keep = QCheckBox("Keep aspect ratio")
+        self.keep.setChecked(True)
+        self.info = caption(f"Original: {iw} x {ih} px")
+        save = QPushButton("Save resized copy")
+        save.setObjectName("primary")
+
+        layout = QVBoxLayout(self)
+        layout.addWidget(caption("Preset"))
+        layout.addWidget(self.preset)
+        row = QHBoxLayout()
+        row.addWidget(self.width_box)
+        row.addWidget(QLabel("x"))
+        row.addWidget(self.height_box)
+        layout.addLayout(row)
+        layout.addWidget(self.keep)
+        layout.addWidget(self.info)
+        layout.addStretch(1)
+        layout.addWidget(self.status)
+        layout.addWidget(save)
+
+        self._syncing = False
+        self.preset.currentTextChanged.connect(self._on_preset)
+        self.width_box.valueChanged.connect(lambda v: self._on_edit("w", v))
+        self.height_box.valueChanged.connect(lambda v: self._on_edit("h", v))
+        save.clicked.connect(self.save)
+
+    def _set(self, w: int, h: int) -> None:
+        self._syncing = True
+        self.width_box.setValue(max(1, w))
+        self.height_box.setValue(max(1, h))
+        self._syncing = False
+
+    def _on_preset(self, text: str) -> None:
+        iw, ih = self.image.size
+        if text.endswith("%"):
+            f = int(text[:-1]) / 100
+            self._set(round(iw * f), round(ih * f))
+        elif text.startswith("Long side"):
+            self._set(*fit_long_side((iw, ih), int(text.split()[2])))
+
+    def _on_edit(self, which: str, value: int) -> None:
+        if self._syncing:
+            return
+        if self.keep.isChecked():
+            if which == "w":
+                self._set(value, round(value / self.ratio))
+            else:
+                self._set(round(value * self.ratio), value)
+        self.preset.blockSignals(True)
+        self.preset.setCurrentText("Custom")
+        self.preset.blockSignals(False)
+
+    def save(self) -> None:
+        try:
+            result = resize_image(self.image, self.width_box.value(), self.height_box.value())
+            dest = output_path(self.path, self.path.suffix, "_resized")
+            save_image(result, dest)
+        except Exception as exc:  # noqa: BLE001
+            self.fail(exc)
+            return
+        self.report(dest)
+
+
+# ---------------------------------------------------------------------------------------------
+# Watermark
+# ---------------------------------------------------------------------------------------------
+
+
+class WatermarkWindow(ToolWindow):
+    TITLE = "Watermark"
+
+    def __init__(self, path: Path) -> None:
+        super().__init__(path)
+        self.resize(900, 600)
+        self.preview_src = self.image.copy()
+        self.preview_src.thumbnail((900, 900))
+        self.preview = QLabel()
+        self.preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.preview.setMinimumSize(480, 400)
+        self.preview.setStyleSheet("background: #141418; border-radius: 8px;")
+
+        self.text = QLineEdit("Watermark")
+        self.position = QComboBox()
+        self.position.addItems(POSITIONS)
+        self.size = make_slider(2, 20, 5)
+        self.opacity = make_slider(10, 100, 60)
+        self.color = QComboBox()
+        self.color.addItems(list(COLORS))
+        save = QPushButton("Save with watermark")
+        save.setObjectName("primary")
+
+        panel, col = self.side_panel()
+        col.addWidget(QLabel("Watermark"))
+        col.addWidget(caption("Text"))
+        col.addWidget(self.text)
+        col.addWidget(caption("Position"))
+        col.addWidget(self.position)
+        col.addWidget(caption("Size"))
+        col.addWidget(self.size)
+        col.addWidget(caption("Opacity"))
+        col.addWidget(self.opacity)
+        col.addWidget(caption("Color"))
+        col.addWidget(self.color)
+        col.addStretch(1)
+        col.addWidget(self.status)
+        col.addWidget(save)
+
+        layout = QHBoxLayout(self)
+        layout.addWidget(self.preview, 1)
+        layout.addWidget(panel)
+
+        self._timer = QTimer(self)
+        self._timer.setSingleShot(True)
+        self._timer.setInterval(60)
+        self._timer.timeout.connect(self._render)
+        self.text.textChanged.connect(self._schedule)
+        self.position.currentIndexChanged.connect(self._schedule)
+        self.size.valueChanged.connect(self._schedule)
+        self.opacity.valueChanged.connect(self._schedule)
+        self.color.currentIndexChanged.connect(self._schedule)
+        save.clicked.connect(self.save)
+        self._render()
+
+    def _schedule(self) -> None:
+        self._timer.start()
+
+    def _compose(self, source: Image.Image) -> Image.Image:
+        return add_watermark(
+            source, self.text.text(), self.position.currentText(), self.size.value(), self.opacity.value(), self.color.currentText()
+        )
+
+    def _render(self) -> None:
+        pix = pil_to_pixmap(self._compose(self.preview_src))
+        self.preview.setPixmap(pix.scaled(self.preview.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        if hasattr(self, "_timer"):
+            self._schedule()
+
+    def save(self) -> None:
+        try:
+            dest = output_path(self.path, self.path.suffix, "_watermark")
+            save_image(self._compose(self.image), dest)
+        except Exception as exc:  # noqa: BLE001
+            self.fail(exc)
+            return
+        self.report(dest)
+
+
 TOOLS = {
     "crop": CropWindow,
     "add_bg": AddBgWindow,
     "edit": EditWindow,
     "redact": RedactWindow,
     "metadata": MetadataWindow,
+    "resize": ResizeWindow,
+    "watermark": WatermarkWindow,
 }
 
 
 def create_tool(name: str, path: Path) -> ToolWindow:
+    """Create the tool window registered under name (PDF and media windows are imported lazily)."""
+    if name.startswith("pdf_"):
+        from . import pdf_windows
+
+        return pdf_windows.TOOLS[name](path)
+    if name == "trim":
+        from .media_windows import TrimWindow
+
+        return TrimWindow(path)
     return TOOLS[name](path)

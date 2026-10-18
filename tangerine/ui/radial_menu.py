@@ -10,13 +10,14 @@ from PySide6.QtGui import QColor, QFont, QFontMetrics, QGuiApplication, QLinearG
 from PySide6.QtWidgets import QWidget
 
 from .. import registry
+from .icons import draw_icon
 from .theme import ORANGE, ORANGE_DARK
 
-SIZE = 480
-CENTER_R = 62
-OUTER_R = 226
+SIZE = 560
+CENTER_R = 58
+OUTER_R = 266
 RING_GAP = 4
-BACKDROP_R = 236
+BACKDROP_R = 276
 NO_DRAG_TIMEOUT_MS = 2500
 
 
@@ -52,7 +53,6 @@ class RadialMenu(QWidget):
         self._mode = "drag"
         self._files: list[Path] = []
         self._groups: list[registry.Group] = []
-        self._unsupported = False
         self._hover: tuple[int, int] | None = None
         self._drag_seen = False
         self._scale = 1.0
@@ -93,8 +93,7 @@ class RadialMenu(QWidget):
     def set_files(self, files: list[Path]) -> None:
         kind, same = registry.common_kind(files)
         self._files = same
-        self._unsupported = bool(files) and kind is None
-        self._groups = registry.groups_for(kind, same[0].suffix) if kind else []
+        self._groups = registry.groups_for(kind, same[0].suffix, len(same)) if kind else []
         self._hover = None
         self.update()
 
@@ -212,9 +211,14 @@ class RadialMenu(QWidget):
             rm = (r_in + r_out) / 2
             rad = math.radians(mid)
             lx, ly = c.x() + rm * math.cos(rad), c.y() - rm * math.sin(rad)
-            p.setPen(QColor("#1a1206") if hovered else QColor("#f2f2f5"))
-            rect = QRectF(lx - 40, ly - 14, 80, 28)
-            p.drawText(rect, Qt.AlignmentFlag.AlignCenter, action.label)
+            color = QColor("#1a1206") if hovered else QColor("#f2f2f5")
+            p.setPen(color)
+            roomy = (r_out - r_in) > 50 and (rm * math.radians(step)) > 52
+            if roomy and draw_icon(p, action.id, lx, ly - 11, 8.5, color):
+                p.setPen(color)
+                p.drawText(QRectF(lx - 40, ly + 2, 80, 20), Qt.AlignmentFlag.AlignCenter, action.label)
+            else:
+                p.drawText(QRectF(lx - 40, ly - 14, 80, 28), Qt.AlignmentFlag.AlignCenter, action.label)
 
     def _paint_center(self, p: QPainter, c: QPointF) -> None:
         p.setPen(QPen(QColor(255, 255, 255, 50), 1.2))
@@ -224,8 +228,6 @@ class RadialMenu(QWidget):
         action = self._action_at(self._hover)
         if action:
             title, sub = action.label, "release to run" if self._mode == "drag" else "click to run"
-        elif self._unsupported:
-            title, sub = "Unsupported", "file type"
         elif self._files:
             name = self._files[0].name
             title = QFontMetrics(p.font()).elidedText(name, Qt.TextElideMode.ElideMiddle, 80)

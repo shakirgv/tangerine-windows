@@ -8,6 +8,7 @@ from pathlib import Path
 import pillow_heif
 from PIL import Image, ImageOps
 
+from .. import settings
 from ..utils import output_path
 
 pillow_heif.register_heif_opener()
@@ -73,12 +74,13 @@ def save_image(img: Image.Image, dest: Path, pil_format: str | None = None) -> P
         img = flatten(img)
     elif img.mode not in ("RGB", "RGBA", "L", "LA", "P", "1"):
         img = img.convert("RGBA")
+    quality = int(settings.get("quality"))
     if fmt == "JPEG":
-        kwargs = {"quality": 92, "optimize": True}
+        kwargs = {"quality": quality, "optimize": True}
     elif fmt == "WEBP":
-        kwargs = {"quality": 90}
+        kwargs = {"quality": quality}
     elif fmt in ("HEIF", "AVIF"):
-        kwargs = {"quality": 85}
+        kwargs = {"quality": quality}
         if img.mode not in ("RGB", "RGBA"):
             img = img.convert("RGBA" if "A" in img.mode else "RGB")
     elif fmt == "PDF":

@@ -16,6 +16,11 @@ DEFAULTS = {
     "trigger": "ctrl+shift",
     "output_dir": "",  # empty string means "next to the original file"
     "enabled": True,
+    "quality": 90,  # JPG / WEBP / HEIC / AVIF output quality
+    "compress_quality": 70,
+    "pdf_dpi": 150,
+    "delete_original": False,  # send the source to the Recycle Bin after a successful conversion
+    "slices": {},  # per kind: {"hidden": [action ids], "order": [action ids]}
 }
 
 _data: dict | None = None

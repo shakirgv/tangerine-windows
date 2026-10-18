@@ -1,5 +1,5 @@
-"""Offscreen UI smoke test: builds every window/menu and saves screenshots to tests/_out/ui.
-Run: python tests/test_ui.py"""
+"""UI smoke test: builds every window/menu and saves screenshots to tests/_out/ui.
+Run: python tests/test_ui.py   (set QT_QPA_PLATFORM=windows for real fonts, default is offscreen)"""
 
 from __future__ import annotations
 
@@ -10,17 +10,20 @@ from pathlib import Path
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
+OUT = ROOT / "tests" / "_out" / "ui"
+os.environ["APPDATA"] = str(ROOT / "tests" / "_out" / "appdata")
 
+import pymupdf  # noqa: E402
 from PIL import Image, ImageDraw  # noqa: E402
-from PySide6.QtCore import QPointF, QRectF  # noqa: E402
+from PySide6.QtCore import QPointF, QRectF, Qt  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
-from tangerine import registry  # noqa: E402
+from tangerine import registry, settings  # noqa: E402
 from tangerine.ui.drop_window import DropWindow  # noqa: E402
+from tangerine.ui.progress import ProgressBox  # noqa: E402
 from tangerine.ui.radial_menu import RadialMenu  # noqa: E402
-from tangerine.ui.tool_windows import TOOLS, create_tool  # noqa: E402
-
-OUT = ROOT / "tests" / "_out" / "ui"
+from tangerine.ui.settings_dialog import SettingsDialog  # noqa: E402
+from tangerine.ui.tool_windows import create_tool  # noqa: E402
 
 
 def main() -> int:
@@ -35,38 +38,83 @@ def main() -> int:
     img.save(sample, exif=Image.Exif())
 
     pdf = OUT / "doc.pdf"
-    import pymupdf
-
     doc = pymupdf.open()
-    doc.new_page().insert_text((72, 100), "hi")
+    for n in range(4):
+        doc.new_page().insert_text((72, 100), f"Page {n + 1} secret@example.com", fontsize=20)
     doc.save(pdf)
+    doc.close()
 
+    clip = OUT / "clip.mp4"
+    import subprocess
+
+    from tangerine.converters.media import ffmpeg_exe
+
+    subprocess.run([ffmpeg_exe(), "-y", "-f", "lavfi", "-i", "testsrc=duration=2:size=160x120:rate=10", str(clip)], capture_output=True)
+
+    # ---- radial menu: layout and hit testing for every kind ------------------------------------
     menu = RadialMenu()
-    for name, files in (("image", [sample]), ("pdf", [pdf]), ("empty", [])):
-        menu.open_for_drag(QPointF(400, 400))
+    samples = {
+        "image": [sample],
+        "image_multi": [sample, sample],
+        "pdf": [pdf],
+        "video": [clip],
+        "folder": [OUT],
+        "empty": [],
+    }
+    for name, files in samples.items():
+        menu.open_for_drag(QPointF(600, 500))
         menu.set_files(files)
         menu._scale = 1.0
         menu.grab().save(str(OUT / f"menu_{name}.png"))
-        print("menu", name, "groups:", [(g.name, len(g.actions)) for g in menu._groups])
-    # hit-testing: top slice of the outer ring must be the first action
+        print("menu", name, [(g.name, len(g.actions)) for g in menu._groups])
     menu.set_files([sample])
     c = menu._center()
-    top = menu._hit(QPointF(c.x(), c.y() - 190))
-    assert top == (0, 0), top
-    second = menu._hit(QPointF(c.x() + 190 * 0.64, c.y() - 190 * 0.77))
-    assert second == (0, 1), second
+    assert menu._hit(QPointF(c.x(), c.y() - 235)) == (0, 0)
     assert menu._hit(c) is None
+    # every slice of every ring is reachable at its label position
+    import math
+
+    for ring, group in enumerate(menu._groups):
+        r_in, r_out = menu._ring_bounds(ring)
+        step = 360 / len(group.actions)
+        for i in range(len(group.actions)):
+            ang = math.radians(90 - i * step)
+            rm = (r_in + r_out) / 2
+            assert menu._hit(QPointF(c.x() + rm * math.cos(ang), c.y() - rm * math.sin(ang))) == (ring, i), (ring, i)
     menu.dismiss()
 
-    drop = DropWindow()
-    drop.grab().save(str(OUT / "drop_window.png"))
+    DropWindow().grab().save(str(OUT / "drop_window.png"))
+    box = ProgressBox()
+    box.start("Compress", 5)
+    box.update_progress(2, "photo.jpg")
+    box.grab().save(str(OUT / "progress.png"))
+    box.finish()
+    dialog = SettingsDialog()
+    dialog.grab().save(str(OUT / "settings.png"))
+    for index in range(dialog.kind.count()):  # slices tab fills for every kind
+        dialog.kind.setCurrentIndex(index)
+    dialog.close()
 
-    for name in TOOLS:
-        window = create_tool(name, sample)
+    # ---- tool windows: each one opens, renders and saves ---------------------------------------
+    cases = {
+        "crop": sample,
+        "add_bg": sample,
+        "edit": sample,
+        "redact": sample,
+        "metadata": sample,
+        "resize": sample,
+        "watermark": sample,
+        "trim": clip,
+        "pdf_pages": pdf,
+        "pdf_protect": pdf,
+        "pdf_unlock": pdf,
+        "pdf_redact": pdf,
+    }
+    for name, path in cases.items():
+        window = create_tool(name, path)
         window.show()
         app.processEvents()
         window.grab().save(str(OUT / f"tool_{name}.png"))
-        print("tool", name, "ok")
         if name == "crop":
             window.aspect.setCurrentText("16:9")
             sel = window.canvas.selection()
@@ -76,21 +124,61 @@ def main() -> int:
             assert round(sel.width()) == 400 and abs(sel.width() / sel.height() - 16 / 9) < 0.02, sel
             window.apply()
             assert "_cropped" in window.status.text(), window.status.text()
-        if name == "redact":
-            window.canvas.set_selection(None)
+        elif name == "redact":
             window.canvas.rects.append(QRectF(50, 50, 200, 100))
             window.apply()
             assert "_redacted" in window.status.text()
-        if name == "add_bg":
+        elif name == "add_bg":
             window.save()
             assert "_bg" in window.status.text()
-        if name == "edit":
+        elif name == "edit":
             window.sliders["brightness"].setValue(30)
             window.save()
             assert "_edited" in window.status.text()
-        if name == "metadata":
+        elif name == "metadata":
             window.strip()
             assert "_clean" in window.status.text()
+        elif name == "resize":
+            window.preset.setCurrentText("50%")
+            assert (window.width_box.value(), window.height_box.value()) == (400, 250)
+            window.width_box.setValue(200)
+            assert window.height_box.value() == 125
+            window.save()
+            assert "_resized" in window.status.text()
+        elif name == "watermark":
+            window.position.setCurrentText("Tiled")
+            window.save()
+            assert "_watermark" in window.status.text()
+        elif name == "trim":
+            window.start.setValue(0.5)
+            window.end.setValue(1.5)
+            window.save()
+            assert "_trimmed" in window.status.text(), window.status.text()
+        elif name == "pdf_pages":
+            assert window.list.count() == 4
+            window.list.item(1).setSelected(True)
+            window._rotate(90)
+            window._delete()
+            assert window.list.count() == 3
+            window.save()
+            assert "_edited" in window.status.text()
+        elif name == "pdf_protect":
+            window.password.setText("pw123")
+            window.run()
+            assert "_protected" in window.status.text()
+        elif name == "pdf_unlock":
+            protected = next(OUT.glob("doc_protected*.pdf"))
+            unlock = create_tool("pdf_unlock", protected)
+            unlock.password.setText("pw123")
+            unlock.run()
+            assert "_unlocked" in unlock.status.text(), unlock.status.text()
+            unlock.close()
+        elif name == "pdf_redact":
+            window.terms.setPlainText("Page")
+            window.checks["Email addresses"].setChecked(True)
+            window.run()
+            assert "_redacted" in window.status.text()
+        print("tool", name, "ok")
         window.close()
     print("UI smoke test passed")
     return 0
