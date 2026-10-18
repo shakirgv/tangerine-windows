@@ -312,6 +312,10 @@ def _already_running() -> bool:
 
 def run(argv: list[str] | None = None) -> int:
     argv = sys.argv if argv is None else argv
+    if "--selftest" in argv:
+        from . import selftest
+
+        return selftest.run(argv[argv.index("--selftest") + 1])
     app = QApplication(argv)
     app.setApplicationName("Tangerine")
     app.setQuitOnLastWindowClosed(False)

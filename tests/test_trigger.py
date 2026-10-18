@@ -77,9 +77,9 @@ def main() -> int:
     enter = QDragEnterEvent(c.toPoint(), Qt.DropAction.CopyAction, mime, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier)
     menu.dragEnterEvent(enter)
     assert menu.files == [sample], menu.files
-    assert [g.name for g in menu._groups] == ["Convert", "Tools"]
+    assert [g.name for g in menu._groups] == ["Convert", "Edit", "Utility"]
 
-    target = QPointF(c.x(), c.y() - 190)  # top slice of the outer ring
+    target = QPointF(c.x(), c.y() - 235)  # top slice of the outer ring
     drop = QDropEvent(target, Qt.DropAction.CopyAction, mime, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier)
     menu.dropEvent(drop)
     app.processEvents()

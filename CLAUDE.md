@@ -1,4 +1,4 @@
-# Tangerine for Windows
+﻿# Tangerine for Windows
 
 A Windows clone of Tangerine (a Mac app): drag a file while holding a modifier key, a radial (circular) menu appears at the cursor, drop the file on a slice to convert it or run a tool on it. Everything runs locally, nothing is uploaded to a server.
 
@@ -70,6 +70,8 @@ tangerine/
 
 ## Current status
 
-Roadmap steps 1-8 are built (video/audio via ffmpeg through imageio-ffmpeg, DOCX to TXT only). Run with `.venv\Scripts\python main.py`. Tests are in `tests/`.
+Roadmap steps 1-8 and the extra features are built: PDF tools, multi-file Combine ring, video/audio tools via ffmpeg (imageio-ffmpeg), image tools, OCR (Windows OCR), settings dialog, progress/cancel, history/undo, clipboard menu, slice icons, installer.
 
-Not verified yet: a real Explorer drag onto the overlay (needs a human on a real screen). Not built: merge/trim, redact for PDF, DOCX to PDF.
+Run with `.venv\Scripts\python main.py`. Build the installer with `powershell -ExecutionPolicy Bypass -File packaging\build.ps1` (output `dist\Tangerine-Setup.exe`, needs about 1 GB free disk). Tests are in `tests/`; `main.py --selftest out.txt` checks a built exe.
+
+Not verified: a real Explorer drag onto the 3-ring overlay and multi-monitor/DPI setups (need a human on a real screen). Not built: AI background removal, DOCX to PDF through Word (simplified renderer is used), PDF redact by drawing boxes (text search only).
