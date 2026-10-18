@@ -1,0 +1,9 @@
+PySide6
+pillow
+pillow-heif
+pymupdf
+pdf2docx
+pynput
+numpy
+python-docx
+imageio-ffmpeg
