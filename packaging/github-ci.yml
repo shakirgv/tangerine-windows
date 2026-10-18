@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: windows-latest
+    env:
+      QT_QPA_PLATFORM: offscreen
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt send2trash markdown winrt-runtime winrt-Windows.Media.Ocr winrt-Windows.Graphics.Imaging winrt-Windows.Storage.Streams winrt-Windows.Globalization winrt-Windows.Foundation winrt-Windows.Foundation.Collections winrt-Windows.Storage
+      - name: Backend tests
+        run: python tests/test_backend.py
+      - name: UI smoke test
+        run: python tests/test_ui.py
+      - name: Trigger and menu tests
+        run: python -W ignore tests/test_trigger.py
+
+  build:
+    needs: test
+    runs-on: windows-latest
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller send2trash markdown winrt-runtime winrt-Windows.Media.Ocr winrt-Windows.Graphics.Imaging winrt-Windows.Storage.Streams winrt-Windows.Globalization winrt-Windows.Foundation winrt-Windows.Foundation.Collections winrt-Windows.Storage
+      - name: Build installer
+        shell: pwsh
+        run: powershell -ExecutionPolicy Bypass -File packaging/build.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Tangerine-Setup
+          path: dist/Tangerine-Setup.exe

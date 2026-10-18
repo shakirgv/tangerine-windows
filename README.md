@@ -78,7 +78,7 @@ python tests/test_trigger.py        # trigger state machine and menu drop handli
 python main.py --selftest out.txt   # checks the bundled libraries, also works inside the built exe
 ```
 
-CI (`.github/workflows/ci.yml`) runs the tests on every push and can build the installer on demand or for a tag.
+A ready CI workflow is in `packaging/github-ci.yml` (tests on every push, installer build on demand or for a tag). To enable it, copy it to `.github/workflows/ci.yml`; pushing a workflow file needs the `workflow` scope (`gh auth refresh -s workflow`).
 
 ## Layout
 
@@ -94,4 +94,5 @@ tangerine/
 packaging/              PyInstaller spec, installer, uninstaller, build script
 tests/
 ```
+
 
